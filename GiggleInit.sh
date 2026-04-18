@@ -1,63 +1,54 @@
 #!/bin/bash
 
-# --- THE GIGGLE-INIT MONSTROSITY ---
-# A Bash-based PID 1 replacement for Alpine Linux
+export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+# --- GIGGLE-INIT v1.1: THE NETWORKING UPDATE ---
 
 # 1. MOUNT ESSENTIALS
-# The kernel gives us rootfs, but we need these for anything to work.
-mount -t proc proc /proc
-mount -t sysfs sys /sys
-mount -t devtmpfs dev /dev
-mount -t tmpfs tmp /run
-mount -t tmpfs tmp /tmp
-
-# Remount root as Read-Write (Kernel usually starts it as Read-Only)
+# We ignore errors if they are already mounted by the kernel
+mount -t proc proc /proc 2>/dev/null
+mount -t sysfs sys /sys 2>/dev/null
+mount -t devtmpfs dev /dev 2>/dev/null
+mount -t tmpfs tmp /run 2>/dev/null
+mount -t tmpfs tmp /tmp 2>/dev/null
 mount -o remount,rw /
 
+# 2. IDENTITY & NETWORKING
+# Fixes the "(none)" prompt and gets us online
+echo "GiggleBox" > /proc/sys/kernel/hostname
+hostname -F /etc/hostname 2>/dev/null || hostname GiggleBox
+
+ifconfig lo up
+ifconfig eth0 up
+udhcpc -i eth0 -b
+
+# 3. DAEMONS
+# D-Bus is the "glue" for Fastfetch and Plasma
+mkdir -p /run/dbus
+dbus-daemon --system --address=unix:path=/run/dbus/system_bus_socket 2>/dev/null &
+
 echo ""
 echo "****************************************"
-echo "* GIGGLE-INIT IS NOW IN CONTROL     *"
-echo "* Zombies, beware. Maybe.        *"
+echo "* GIGGLE-INIT: NETWORK & D-BUS ACTIVE  *"
+echo "* Welcome to GiggleBox                 *"
 echo "****************************************"
 echo ""
 
-# 2. THE ZOMBIE REAPER (The "Wait" Loop)
-# We run this in the foreground later to keep PID 1 alive.
+# 4. THE REAPER FUNCTION
 reap_and_monitor() {
-    echo "[GiggleInit] Monitoring processes..."
     while true; do
-        # Wait for any process to change state
-        # In a real init, we'd check which PID died and restart it.
-        # Here, we just reap it to prevent ghosts in the machine.
         wait -n 2>/dev/null
-        
-        # If we reach here, a child died. 
-        # Let's just output a snarky comment.
-        echo "[GiggleInit] A child process exited. RIP."
     done
 }
 
-# 3. SIGNAL HANDLING
-# We must catch these or the kernel might panic on a Ctrl+Alt+Del
-trap 'echo "[GiggleInit] Reboot signal received!"; reboot' SIGINT
-trap 'echo "[GiggleInit] Poweroff signal received!"; poweroff' SIGUSR1
+# 5. SIGNAL TRAPS
+trap 'reboot' SIGINT
+trap 'poweroff' SIGUSR1
 
-# 4. START SERVICES
-# Note: We background them with & so we don't get stuck.
-echo "[GiggleInit] Starting Syslog..."
-syslogd &
+# 6. EMERGENCY SHELL
+# We export the hostname so the sub-shell knows who it is
+export HOSTNAME=GiggleBox
+setsid bash -l < /dev/tty1 > /dev/tty1 2>&1 &
 
-echo "[GiggleInit] Starting Network (lo)..."
-ifconfig lo up &
-
-echo "[GiggleInit] Starting Emergency Shell on tty1..."
-# We use 'setsid' so the shell gets its own session
-setsid bash < /dev/tty1 > /dev/tty1 2>&1 &
-
-# 5. KEEP PID 1 ALIVE
-# If this script exits, the kernel panics. 
+# Keep PID 1 alive forever
 reap_and_monitor
-
-# 6. THE NUCLEAR OPTION
-echo 1 > /proc/sys/kernel/sysrq
-echo b > /proc/sysrq-trigger
