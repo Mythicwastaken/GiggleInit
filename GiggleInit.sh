@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # --- GIGGLE-INIT v1.3 ---
-# Bourne again out of pure sh chaos.
 
 export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 mount -t proc proc /proc 2>/dev/null
